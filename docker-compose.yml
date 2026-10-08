@@ -1,0 +1,59 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: omniflow-rabbitmq
+    ports:
+      - "5672:5672"     # Porta AMQP para as mensagens
+      - "15672:15672"   # Painel web visual do RabbitMQ
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: omniflow-postgres
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: omniflow_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  order-gateway:
+    build: ./services/order-gateway
+    container_name: omniflow-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+
+  payment-engine:
+    build: ./services/payment-engine
+    container_name: omniflow-payment
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_started
+    environment:
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      DATABASE_URL: "postgresql://user:password@postgres:5432/omniflow_db"
+
+  notification-service:
+    build: ./services/notification-service
+    container_name: omniflow-notifications
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+
+volumes:
+  pgdata:
